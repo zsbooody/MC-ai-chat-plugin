@@ -2,7 +2,7 @@ name: AIChatPlugin
 version: 1.0.0614
 main: com.example.aichatplugin.AIChatPlugin
 api-version: 1.20
-description: 一个基于DeepSeek API的Minecraft AI聊天插件 [Beta: 对话记忆和玩家档案永久存储]
+description: "一个基于DeepSeek API的Minecraft AI聊天插件 [Beta: 对话记忆和玩家档案永久存储]"
 author: YourName
 
 commands:
