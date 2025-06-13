@@ -1,0 +1,172 @@
+# AIChatPlugin 配置文件
+
+# AI服务设置
+settings:
+  # DeepSeek API密钥
+  api-key: ""
+  
+  # 使用的AI模型
+  model: "deepseek-chat"
+  
+  # API端点
+  api-url: "https://api.deepseek.com/chat/completions/"
+  
+  # 最大历史记录数量
+  max-history: 5
+  
+  # 系统提示词
+  role-system: |
+    你是一名我的世界游戏助手。你的性格温和友善，说话自然亲切。
+
+    在回应玩家时，请遵循以下原则：
+    1. 保持简洁，每句话不超过50个字
+    2. 避免重复已提到的信息
+    3. 只在必要时提及环境信息
+    4. 优先回答玩家的问题
+    5. 避免过多的表情符号
+
+    你虽然掌握很多信息，但请：
+    1. 尊重玩家的隐私
+    2. 不随意透露游戏的特殊信息
+    3. 不干扰玩家的游戏体验
+    4. 保持专业和得体的态度
+
+  
+  # 连接超时时间（秒）
+  connect-timeout: 5
+  
+  # 读取超时时间（秒）
+  read-timeout: 10
+  
+  # 写入超时时间（秒）
+  write-timeout: 10
+  
+  # 温度参数
+  temperature: 0.7
+  
+  # 最大令牌数
+  max-tokens: 150
+
+# 聊天设置
+chat:
+  # 是否启用聊天功能
+  enabled: true
+  
+  # 聊天命令前缀
+  prefix: "!"
+  
+  # 是否广播AI响应
+  broadcast: true
+  
+  # 广播消息格式
+  broadcast-format: "&7[AI对话] &f{player}: {message}"
+
+# 消息设置
+messages:
+  # AI响应消息格式
+  reply: "&7[AI] &f{text}"
+  
+  # 错误消息格式
+  error: "&c发生错误：{error}"
+  
+  # 玩家加入消息
+  join: "&a{player}加入了游戏"
+  
+  # 玩家退出消息
+  quit: "&c{player}离开了游戏"
+  
+  # 玩家死亡消息
+  death: "&c{player}在{location}死亡: {reason}"
+  
+  # 玩家升级消息
+  level-up: "&e{player}的等级从{old_level}提升到{new_level}"
+  
+  # 玩家完成进度消息
+  advancement: "&6{player}完成了进度：{advancement}"
+  
+  # 帮助消息
+  help: |
+    &6=== AI聊天帮助 ===
+    &e/ai <消息> &7- 与AI对话
+    &e/ai help &7- 显示此帮助
+    &e/ai clear &7- 清除对话历史
+    &6================
+
+# 环境感知设置
+environment:
+  # 实体检测范围
+  entity-detection-range: 10
+  
+  # 方块检测范围
+  block-detection-range: 3
+  
+  # 是否显示详细位置信息
+  show-detailed-location: true
+  
+  # 是否显示天气信息
+  show-weather: true
+  
+  # 是否显示时间信息
+  show-time: true
+
+# 玩家状态监听设置
+player-status:
+  # 伤害响应阈值（血量百分比）
+  damage-threshold: 0.3
+  
+  # 伤害响应冷却时间（毫秒）
+  damage-cooldown: 1000
+  
+  # 是否响应玩家加入事件
+  respond-to-join: true
+  
+  # 是否响应玩家离开事件
+  respond-to-quit: true
+  
+  # 是否响应玩家死亡事件
+  respond-to-death: true
+  
+  # 是否响应玩家升级事件
+  respond-to-level-up: true
+  
+  # 是否响应玩家进度完成事件
+  respond-to-advancement: true
+
+# 调试设置
+debug:
+  # 是否启用调试模式
+  enabled: false
+  
+  # 是否记录详细日志
+  verbose-logging: false
+  
+  # 是否显示性能统计
+  show-performance: true
+
+# 对话设置
+conversation:
+  # 最大历史消息数
+  max-history: 5
+  
+  # 上下文最大长度
+  max-context-length: 1000
+  
+  # 是否启用对话历史持久化
+  enable-persistence: false
+  
+  # 对话历史保存间隔（秒）
+  save-interval: 300
+  
+  # 是否在服务器关闭时保存对话历史
+  save-on-shutdown: false
+
+# 玩家档案设置
+player-profile:
+  # 是否启用玩家档案持久化
+  enable-persistence: false
+  
+  # 玩家档案保存间隔（秒）
+  save-interval: 300
+  
+  # 是否在服务器关闭时保存玩家档案
+  save-on-shutdown: false

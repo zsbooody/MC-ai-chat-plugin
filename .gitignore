@@ -1,0 +1,21 @@
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Build files
+target/
+dependency-reduced-pom.xml
+BuildTools.log.txt
+BuildTools.jar
+
+# Compiled files
+*.class
+*.jar
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db 

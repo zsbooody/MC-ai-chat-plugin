@@ -1,0 +1,30 @@
+name: AIChatPlugin
+version: 1.0.0614
+main: com.example.aichatplugin.AIChatPlugin
+api-version: 1.20
+description: 一个基于DeepSeek API的Minecraft AI聊天插件 [Beta: 对话记忆和玩家档案永久存储]
+author: YourName
+
+commands:
+  ai:
+    description: 与AI助手对话
+    usage: /ai <消息>
+    aliases: [aichat, chat]
+    permission: aichatplugin.chat
+  profile:
+    description: 查看玩家档案信息
+    usage: /profile
+    permission: aichatplugin.profile
+
+permissions:
+  aichatplugin.chat:
+    description: 允许使用AI聊天功能
+    default: true
+  aichatplugin.admin:
+    description: 允许使用AI聊天管理功能
+    default: op
+  aichatplugin.profile:
+    description: 允许使用档案命令
+    default: true
+
+log: true  # 确保启用插件日志
