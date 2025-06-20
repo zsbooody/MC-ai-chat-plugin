@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.example</groupId>
   <artifactId>ai-chat-plugin</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0618</version>
   <packaging>jar</packaging>
 
   <name>AIChatPlugin</name>
@@ -45,7 +45,7 @@
     <dependency>
         <groupId>org.spigotmc</groupId>
         <artifactId>spigot-api</artifactId>
-        <version>1.20.1-R0.1-SNAPSHOT</version>
+        <version>1.20.4-R0.1-SNAPSHOT</version>
         <scope>provided</scope>
     </dependency>
 
@@ -68,6 +68,20 @@
         <groupId>org.json</groupId>
         <artifactId>json</artifactId>
         <version>20231013</version>
+    </dependency>
+
+    <!-- Adventure API -->
+    <dependency>
+        <groupId>net.kyori</groupId>
+        <artifactId>adventure-api</artifactId>
+        <version>4.14.0</version>
+        <scope>provided</scope>
+    </dependency>
+    <dependency>
+        <groupId>net.kyori</groupId>
+        <artifactId>adventure-text-serializer-plain</artifactId>
+        <version>4.14.0</version>
+        <scope>provided</scope>
     </dependency>
 </dependencies>
 
@@ -102,7 +116,7 @@
                   <mainClass>com.example.aichatplugin.AIChatPlugin</mainClass>
                 </transformer>
               </transformers>
-              <finalName>ai-chat-plugin-1.0.0614</finalName>
+              <finalName>ai-chat-plugin-1.1.0618</finalName>
             </configuration>
           </execution>
         </executions>

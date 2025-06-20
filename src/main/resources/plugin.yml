@@ -1,7 +1,7 @@
 name: AIChatPlugin
-version: 1.0.0614
+version: '${project.version}'
 main: com.example.aichatplugin.AIChatPlugin
-api-version: 1.20
+api-version: '1.20'
 description: "一个基于DeepSeek API的Minecraft AI聊天插件 [Beta: 对话记忆和玩家档案永久存储]"
 author: YourName
 
@@ -9,22 +9,71 @@ commands:
   ai:
     description: 与AI助手对话
     usage: /ai <消息>
-    aliases: [aichat, chat]
-    permission: aichatplugin.chat
+    aliases: [chat]
+    permission: aichat.use
+  aichat:
+    description: AI聊天管理命令
+    usage: |
+      /aichat - 显示帮助信息
+      /aichat <消息> - 与AI对话
+      /aichat help - 显示帮助信息
+      /aichat reload - 重载配置 (需要管理员权限)
+      /aichat stats - 查看统计信息 (需要管理员权限)
+      /aichat status - 查看插件状态 (需要管理员权限)
+      /aichat debug - 切换调试模式 (需要管理员权限)
+      /aichat performance - 查看性能信息 (需要管理员权限)
+    permission: aichat.use
+    permission-message: "§c你没有权限使用此命令！"
   profile:
-    description: 查看玩家档案信息
-    usage: /profile
-    permission: aichatplugin.profile
+    description: 查看玩家档案
+    usage: /profile [玩家名]
+    permission: aichat.profile
+    permission-message: "§c你没有权限使用此命令！"
+  performance:
+    description: 查看服务器性能状态
+    usage: |
+      /performance - 显示性能概览
+      /performance show - 显示详细性能信息
+      /performance monitor - 开启/关闭性能监控
+    permission: aichat.performance
+    permission-message: "§c你没有权限使用此命令！"
+  promote:
+    description: 提升用户为VIP权限
+    usage: /promote <玩家名>
+    permission: aichat.admin
+    permission-message: "§c你没有权限使用此命令！"
 
 permissions:
-  aichatplugin.chat:
-    description: 允许使用AI聊天功能
+  aichat.use:
+    description: 允许使用基础AI聊天功能
     default: true
-  aichatplugin.admin:
-    description: 允许使用AI聊天管理功能
+  aichat.admin:
+    description: 允许使用AI聊天管理功能 (reload, stats, debug等)
     default: op
-  aichatplugin.profile:
-    description: 允许使用档案命令
+    children:
+      aichat.use: true
+      aichat.performance: true
+      aichat.profile: true
+  aichat.performance:
+    description: 允许查看性能报告和监控信息
+    default: op
+    children:
+      aichat.use: true
+  aichat.profile:
+    description: 允许查看玩家档案信息
     default: true
+    children:
+      aichat.use: true
+  aichat.vip:
+    description: VIP用户权限，享受优先处理和额外功能
+    default: false
+    children:
+      aichat.use: true
+      aichat.profile: true
+  aichat.promote:
+    description: 允许提升其他玩家为VIP用户
+    default: op
+    children:
+      aichat.admin: true
 
 log: true  # 确保启用插件日志
