@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Plugin - 测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .test-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        .test-button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+        .test-button:hover {
+            background: #5a67d8;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI Chat Plugin Web配置系统测试</h1>
+        
+        <div class="test-section">
+            <h2>1. 主界面访问</h2>
+            <p>点击下面的链接访问主配置界面：</p>
+            <a href="index.html" class="test-button" target="_blank">打开配置界面</a>
+        </div>
+        
+        <div class="test-section">
+            <h2>2. API连接测试</h2>
+            <p>测试与后端API的连接：</p>
+            <button class="test-button" onclick="testAPIConnection()">测试连接</button>
+            <div id="api-status" class="status loading" style="display:none"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>3. 模拟数据测试</h2>
+            <p>使用模拟数据测试界面功能：</p>
+            <button class="test-button" onclick="openWithMockData()">打开模拟界面</button>
+        </div>
+        
+        <div class="test-section">
+            <h2>4. 组件独立测试</h2>
+            <p>测试各个组件是否正常加载：</p>
+            <button class="test-button" onclick="testComponents()">测试组件</button>
+            <div id="component-status" class="status loading" style="display:none"></div>
+        </div>
+    </div>
+    
+    <script>
+        // 测试API连接
+        async function testAPIConnection() {
+            const statusDiv = document.getElementById('api-status');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status loading';
+            statusDiv.textContent = '正在测试连接...';
+            
+            try {
+                const response = await fetch('/api/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML = `
+                        <strong>连接成功！</strong><br>
+                        服务器响应：${JSON.stringify(data, null, 2)}
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `
+                    <strong>连接失败！</strong><br>
+                    错误信息：${error.message}<br>
+                    <br>
+                    <em>提示：确保AI Chat Plugin已在服务器上运行，并且Web服务已启动。</em>
+                `;
+            }
+        }
+        
+        // 打开模拟数据界面
+        function openWithMockData() {
+            // 创建一个带有模拟数据的测试页面
+            const mockWindow = window.open('', '_blank');
+            mockWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>模拟数据测试</title>
+                    <script>
+                        // 模拟API服务
+                        window.ApiService = {
+                            status: {
+                                get: () => Promise.resolve({
+                                    version: 'v1.1.0-test',
+                                    running: true,
+                                    tps: 19.8,
+                                    operationMode: 'FULL',
+                                    cpuUsage: 0.35,
+                                    memoryUsage: 0.62,
+                                    onlinePlayers: 5,
+                                    memoryPools: {
+                                        heap: { used: 512 * 1024 * 1024, max: 1024 * 1024 * 1024, percentage: 50 },
+                                        nonHeap: { used: 128 * 1024 * 1024, max: 256 * 1024 * 1024, percentage: 50 },
+                                        eden: { used: 256 * 1024 * 1024, max: 512 * 1024 * 1024, percentage: 50 },
+                                        oldGen: { used: 384 * 1024 * 1024, max: 768 * 1024 * 1024, percentage: 50 }
+                                    },
+                                    benchmark: {
+                                        status: '已完成',
+                                        lastRun: new Date().getTime() - 3600000,
+                                        score: 85,
+                                        optimizationCount: 3
+                                    }
+                                })
+                            },
+                            config: {
+                                get: () => Promise.resolve({
+                                    basic: {
+                                        debugEnabled: false,
+                                        chatEnabled: true,
+                                        chatPrefix: '!',
+                                        broadcastEnabled: false
+                                    },
+                                    ai: {
+                                        apiKey: 'sk-test-key',
+                                        model: 'deepseek-chat',
+                                        temperature: 0.7,
+                                        maxTokens: 200
+                                    },
+                                    performance: {
+                                        autoOptimizeEnabled: true,
+                                        tpsThresholdFull: 18.0,
+                                        tpsThresholdLite: 15.0,
+                                        tpsThresholdBasic: 10.0
+                                    },
+                                    environment: {
+                                        entityRange: 10,
+                                        blockScanRange: 10,
+                                        showWeather: true,
+                                        showTime: true
+                                    },
+                                    chat: {
+                                        normalUserCooldown: 3000,
+                                        vipUserCooldown: 1000,
+                                        maxMessagesPerMinute: 10,
+                                        contentFilterEnabled: false
+                                    }
+                                })
+                            }
+                        };
+                        
+                        window.StatusPoller = {
+                            addCallback: () => {},
+                            start: () => {},
+                            stop: () => {}
+                        };
+                    <\/script>
+                </head>
+                <body>
+                    <h2>模拟数据环境</h2>
+                    <p>这是一个使用模拟数据的测试环境。</p>
+                    <iframe src="index.html" style="width:100%;height:600px;border:1px solid #ccc;"></iframe>
+                </body>
+                </html>
+            `);
+        }
+        
+        // 测试组件
+        function testComponents() {
+            const statusDiv = document.getElementById('component-status');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status loading';
+            statusDiv.textContent = '正在测试组件...';
+            
+            const components = [
+                'services/api.js',
+                'components/Dashboard.js',
+                'components/ConfigPanel.js',
+                'components/BenchmarkPanel.js',
+                'components/MemoryPanel.js',
+                'components/NotificationToast.js',
+                'app.js'
+            ];
+            
+            let loaded = 0;
+            let failed = [];
+            
+            components.forEach(component => {
+                const script = document.createElement('script');
+                script.src = component;
+                script.onload = () => {
+                    loaded++;
+                    checkComplete();
+                };
+                script.onerror = () => {
+                    failed.push(component);
+                    checkComplete();
+                };
+                document.head.appendChild(script);
+            });
+            
+            function checkComplete() {
+                if (loaded + failed.length === components.length) {
+                    if (failed.length === 0) {
+                        statusDiv.className = 'status success';
+                        statusDiv.innerHTML = `<strong>所有组件加载成功！</strong><br>已加载 ${loaded} 个组件。`;
+                    } else {
+                        statusDiv.className = 'status error';
+                        statusDiv.innerHTML = `
+                            <strong>部分组件加载失败！</strong><br>
+                            成功：${loaded} 个<br>
+                            失败：${failed.join(', ')}
+                        `;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html> 

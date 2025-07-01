@@ -95,7 +95,7 @@ public class ProfileCommand implements CommandExecutor, TabCompleter {
     }
     
     private String buildReport(PlayerProfile profile) {
-        String format = plugin.getConfig().getString(CONFIG_FORMAT, DEFAULT_FORMAT);
+        String format = plugin.getConfigLoader().getString(CONFIG_FORMAT, DEFAULT_FORMAT);
         return String.format(format,
             profile.getLastName(),
             profile.getPlayTimeMinutes(),
@@ -127,26 +127,26 @@ public class ProfileCommand implements CommandExecutor, TabCompleter {
     }
     
     private int getDeathThreshold() {
-        return plugin.getConfig().getInt(CONFIG_THRESHOLDS + ".deaths", DEFAULT_DEATH_THRESHOLD);
+        return plugin.getConfigLoader().getInt(CONFIG_THRESHOLDS + ".deaths", DEFAULT_DEATH_THRESHOLD);
     }
     
     private int getKillThreshold() {
-        return plugin.getConfig().getInt(CONFIG_THRESHOLDS + ".kills", DEFAULT_KILL_THRESHOLD);
+        return plugin.getConfigLoader().getInt(CONFIG_THRESHOLDS + ".kills", DEFAULT_KILL_THRESHOLD);
     }
     
     private int getPlaytimeThreshold() {
-        return plugin.getConfig().getInt(CONFIG_THRESHOLDS + ".playtime", DEFAULT_PLAYTIME_THRESHOLD);
+        return plugin.getConfigLoader().getInt(CONFIG_THRESHOLDS + ".playtime", DEFAULT_PLAYTIME_THRESHOLD);
     }
     
     private void sendConfigMessage(CommandSender sender, String key) {
-        String message = plugin.getConfig().getString(CONFIG_MESSAGES + "." + key);
+        String message = plugin.getConfigLoader().getString(CONFIG_MESSAGES + "." + key);
         if (message != null) {
             sender.sendMessage(message);
         }
     }
     
     private void sendConfigMessage(CommandSender sender, String key, Object... args) {
-        String message = plugin.getConfig().getString(CONFIG_MESSAGES + "." + key);
+        String message = plugin.getConfigLoader().getString(CONFIG_MESSAGES + "." + key);
         if (message != null) {
             sender.sendMessage(String.format(message, args));
         }

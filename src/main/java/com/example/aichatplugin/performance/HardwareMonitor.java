@@ -35,9 +35,10 @@ public class HardwareMonitor implements AutoCloseable {
     private final MemoryMXBean memoryBean;
     
     // 内存检测阈值
-    private double minFreeMemory;
-    private double minFreeSystemMemory;
-    private int minAvailableCores;
+    private double minAvailableMemory;
+    private double minSystemMemory;
+    private int minCpuCores;
+    private String hardwareWarningMessage;
     
     // 检测状态
     private boolean lastCheckResult = true;
@@ -86,11 +87,12 @@ public class HardwareMonitor implements AutoCloseable {
      * 重新加载配置
      */
     public void loadConfig() {
-        minFreeMemory = config.getDouble(CONFIG_MIN_FREE_MEMORY, DEFAULT_MIN_FREE_MEMORY);
-        minFreeSystemMemory = config.getDouble(CONFIG_MIN_FREE_SYSTEM_MEMORY, DEFAULT_MIN_FREE_SYSTEM_MEMORY);
-        minAvailableCores = config.getInt(CONFIG_MIN_AVAILABLE_CORES, DEFAULT_MIN_AVAILABLE_CORES);
+        minAvailableMemory = config.getDouble("hardware.min-free-memory", 0.5);
+        minSystemMemory = config.getDouble("hardware.min-free-system-memory", 0.5);
+        minCpuCores = config.getInt("hardware.min-available-cores", 2);
+        hardwareWarningMessage = config.getString("hardware.hardware-warning", "&c服务器硬件资源不足（内存）");
         
-        plugin.getLogger().info("硬件监控配置已加载 - 内存要求: " + minFreeMemory + "GB, 系统内存: " + minFreeSystemMemory + "GB, 核心: " + minAvailableCores);
+        plugin.getLogger().info("硬件监控配置已加载 - 内存要求: " + minAvailableMemory + "GB, 系统内存: " + minSystemMemory + "GB, 核心: " + minCpuCores);
     }
 
     /**
@@ -136,19 +138,19 @@ public class HardwareMonitor implements AutoCloseable {
         HardwareStatus status = getStatus();
         
         // 检查可用内存
-        if (status.getFreeMemory() < minFreeMemory) {
+        if (status.getFreeMemory() < minAvailableMemory) {
             plugin.getPerformanceMonitor().handleHardwareWarning("可用内存不足: " + 
                 String.format("%.1f", status.getFreeMemory()) + "GB");
         }
         
         // 检查系统内存
-        if (status.getSystemFreeMemory() < minFreeSystemMemory) {
+        if (status.getSystemFreeMemory() < minSystemMemory) {
             plugin.getPerformanceMonitor().handleHardwareWarning("系统可用内存不足: " + 
                 String.format("%.1f", status.getSystemFreeMemory()) + "GB");
         }
         
         // 检查CPU核心数
-        if (status.getAvailableCores() < minAvailableCores) {
+        if (status.getAvailableCores() < minCpuCores) {
             plugin.getPerformanceMonitor().handleHardwareWarning("CPU核心数不足: " + 
                 status.getAvailableCores() + "核心");
         }
@@ -169,8 +171,8 @@ public class HardwareMonitor implements AutoCloseable {
         double freeMemory = getFreeMemory();
         performanceCounters.get("memory_checks").incrementAndGet();
         
-        if (freeMemory < minFreeMemory) {
-            plugin.debug("可用内存不足: " + freeMemory + "GB，要求: " + minFreeMemory + "GB");
+        if (freeMemory < minAvailableMemory) {
+            plugin.debug("可用内存不足: " + freeMemory + "GB，要求: " + minAvailableMemory + "GB");
             return false;
         }
         return true;
@@ -178,8 +180,8 @@ public class HardwareMonitor implements AutoCloseable {
 
     private boolean checkSystemMemory() {
         double freeSystemMem = getSystemFreeMemory();
-        if (freeSystemMem < minFreeSystemMemory) {
-            plugin.debug("系统可用内存不足: " + freeSystemMem + "GB，要求: " + minFreeSystemMemory + "GB");
+        if (freeSystemMem < minSystemMemory) {
+            plugin.debug("系统可用内存不足: " + freeSystemMem + "GB，要求: " + minSystemMemory + "GB");
             return false;
         }
         return true;
@@ -189,8 +191,8 @@ public class HardwareMonitor implements AutoCloseable {
         int cores = getAvailableCores();
         performanceCounters.get("core_checks").incrementAndGet();
         
-        if (cores < minAvailableCores) {
-            plugin.debug("可用CPU核心数不足: " + cores + "，要求: " + minAvailableCores);
+        if (cores < minCpuCores) {
+            plugin.debug("可用CPU核心数不足: " + cores + "，要求: " + minCpuCores);
             return false;
         }
         return true;
@@ -225,7 +227,7 @@ public class HardwareMonitor implements AutoCloseable {
             return;
         }
 
-        String warning = config.getString("hardware_warning", "&c服务器硬件资源不足（内存）");
+        String warning = hardwareWarningMessage;
         Bukkit.getScheduler().runTask(plugin, () -> {
             Bukkit.broadcastMessage(warning);
         });

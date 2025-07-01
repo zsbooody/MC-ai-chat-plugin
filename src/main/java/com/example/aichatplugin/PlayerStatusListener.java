@@ -148,7 +148,41 @@ public class PlayerStatusListener implements Listener {
     }
     
     public void shutdown() {
+        plugin.debug("开始关闭PlayerStatusListener...");
+        
+        // 停止接收新任务
         eventExecutor.shutdown();
+        
+        try {
+            // 等待现有任务完成
+            if (!eventExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                plugin.getLogger().warning("事件处理器未能在5秒内关闭，强制关闭");
+                eventExecutor.shutdownNow();
+                
+                // 再等待2秒
+                if (!eventExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    plugin.getLogger().warning("事件处理器强制关闭失败");
+                }
+            }
+        } catch (InterruptedException e) {
+            plugin.getLogger().warning("等待事件处理器关闭时被中断");
+            eventExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
+        // 清理玩家状态数据
+        try {
+            playerDamageStates.clear();
+            lastEventTime.clear();
+            eventProcessingTimes.clear();
+            eventCounts.clear();
+            lastOutputTime.clear();
+            plugin.debug("玩家状态数据清理完成");
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "清理玩家状态数据时发生错误", e);
+        }
+        
+        plugin.debug("PlayerStatusListener关闭完成");
     }
     
     private boolean shouldProcessEvent(Player player, Class<?> eventType) {
@@ -161,7 +195,9 @@ public class PlayerStatusListener implements Listener {
         );
         
         Long lastTime = playerEvents.get(eventType);
-        long cooldown = EVENT_SPECIFIC_COOLDOWN.getOrDefault(eventType, DEFAULT_EVENT_COOLDOWN);
+        
+        // 🔧 修改：根据事件类型从配置获取冷却时间
+        long cooldown = getEventCooldown(eventType);
         
         if (lastTime != null && now - lastTime < cooldown) {
             return false;
@@ -169,6 +205,22 @@ public class PlayerStatusListener implements Listener {
         
         playerEvents.put(eventType, now);
         return true;
+    }
+    
+    /**
+     * 根据事件类型获取配置的冷却时间
+     */
+    private long getEventCooldown(Class<?> eventType) {
+        if (eventType == PlayerJoinEvent.class) {
+            return configLoader.getJoinCooldown();
+        } else if (eventType == PlayerQuitEvent.class) {
+            return configLoader.getQuitCooldown();
+        } else if (eventType == EntityDamageEvent.class) {
+            return configLoader.getDamageCooldown();
+        } else {
+            // 对于其他事件类型，使用原有的硬编码映射作为后备
+            return EVENT_SPECIFIC_COOLDOWN.getOrDefault(eventType, DEFAULT_EVENT_COOLDOWN);
+        }
     }
     
     @EventHandler(priority = EventPriority.MONITOR)

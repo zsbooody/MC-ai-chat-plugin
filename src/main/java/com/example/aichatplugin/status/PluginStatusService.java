@@ -34,10 +34,10 @@ import java.util.Iterator;
  * 负责收集和生成插件状态报告，整合所有性能统计信息
  */
 public class PluginStatusService {
-    private static final String CONFIG_WINDOW_SIZE = "status.window_size";
-    private static final String CONFIG_RETENTION_HOURS = "status.retention_hours";
-    private static final String CONFIG_SUGGESTION_RULES = "status.suggestion_rules";
-    private static final String CONFIG_REPORT_TEMPLATE = "status.report_template";
+    private static final String CONFIG_WINDOW_SIZE = "status.window-size";
+    private static final String CONFIG_RETENTION_HOURS = "status.retention-hours";
+    private static final String CONFIG_SUGGESTION_RULES = "status.suggestion-rules";
+    private static final String CONFIG_REPORT_TEMPLATE = "status.report-template";
     
     private final AIChatPlugin plugin;
     private FileConfiguration config;
@@ -588,8 +588,8 @@ public class PluginStatusService {
         }
         
         // 响应时间异常检测
-        double responseSpikeThreshold = config.getDouble("anomaly.response_spike", RESPONSE_TIME_SPIKE_THRESHOLD);
-        double responseAbsoluteThreshold = config.getDouble("anomaly.response_absolute", RESPONSE_TIME_ABSOLUTE_THRESHOLD);
+        double responseSpikeThreshold = config.getDouble("anomaly.response-spike", RESPONSE_TIME_SPIKE_THRESHOLD);
+        double responseAbsoluteThreshold = config.getDouble("anomaly.response-absolute", RESPONSE_TIME_ABSOLUTE_THRESHOLD);
         
         if (lastResponseTime > responseAbsoluteThreshold || 
             (lastResponseTime > 0 && lastResponseTime / Math.max(1, lastResponseTime) > responseSpikeThreshold)) {
@@ -597,7 +597,7 @@ public class PluginStatusService {
         }
         
         // 事件频率异常检测
-        double eventFreqThreshold = config.getDouble("anomaly.event_frequency", 50.0);
+        double eventFreqThreshold = config.getDouble("anomaly.event-frequency", 50.0);
         long totalEvents = eventCounters.values().stream().mapToLong(LongAdder::sum).sum();
         if (totalEvents > eventFreqThreshold) {
             anomalies.add("⚠️ 事件频率过高: " + totalEvents + "/分钟");
@@ -768,7 +768,7 @@ public class PluginStatusService {
     }
 
     private void initializeEventPriorities() {
-        ConfigurationSection prioritySection = config.getConfigurationSection("event_priority");
+        ConfigurationSection prioritySection = config.getConfigurationSection("event-priority");
         if (prioritySection != null) {
             // 先加载配置
             loadPriorityEvents(prioritySection, "critical", EventPriority.CRITICAL);

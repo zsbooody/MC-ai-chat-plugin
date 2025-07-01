@@ -53,20 +53,16 @@ public class DeepSeekAIService {
     private static final long INITIAL_RETRY_DELAY = 1000; // 1 second
 
     /**
-     * 优化的LRU缓存实现
+     * 🔧 修复：线程安全的LRU缓存实现
      */
     private static class Cache<K, V> {
-        private final LinkedHashMap<K, CacheEntry<V>> cache;
+        private final ConcurrentHashMap<K, CacheEntry<V>> cache;
         private final int maxSize;
         private final long ttl;
+        private final Object cleanupLock = new Object();
 
         public Cache(int maxSize, long ttl) {
-            this.cache = new LinkedHashMap<K, CacheEntry<V>>(maxSize, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<K, CacheEntry<V>> eldest) {
-                    return size() > maxSize || eldest.getValue().isExpired(ttl);
-                }
-            };
+            this.cache = new ConcurrentHashMap<>();
             this.maxSize = maxSize;
             this.ttl = ttl;
         }
@@ -74,7 +70,9 @@ public class DeepSeekAIService {
         public V get(K key) {
             CacheEntry<V> entry = cache.get(key);
             if (entry == null || entry.isExpired(ttl)) {
-                cache.remove(key);
+                if (entry != null) {
+                    cache.remove(key);
+                }
                 return null;
             }
             return entry.value;
@@ -82,6 +80,31 @@ public class DeepSeekAIService {
 
         public void put(K key, V value) {
             cache.put(key, new CacheEntry<>(value));
+            
+            // 🔧 线程安全的大小控制
+            if (cache.size() > maxSize) {
+                synchronized (cleanupLock) {
+                    if (cache.size() > maxSize) {
+                        cleanupOldEntries();
+                    }
+                }
+            }
+        }
+        
+        // 🔧 新增：清理过期和多余的条目
+        private void cleanupOldEntries() {
+            long now = System.currentTimeMillis();
+            // 首先移除过期的条目
+            cache.entrySet().removeIf(entry -> entry.getValue().isExpired(ttl));
+            
+            // 如果仍然超过大小限制，移除最老的条目
+            if (cache.size() > maxSize) {
+                cache.entrySet().stream()
+                    .sorted((e1, e2) -> Long.compare(e1.getValue().timestamp, e2.getValue().timestamp))
+                    .limit(cache.size() - maxSize)
+                    .map(Map.Entry::getKey)
+                    .forEach(cache::remove);
+            }
         }
 
         private static class CacheEntry<V> {
@@ -167,8 +190,8 @@ public class DeepSeekAIService {
      * 获取玩家的API密钥
      */
     private String getPlayerApiKey(UUID playerId) {
-        return playerKeyMap.computeIfAbsent(playerId, 
-            id -> apiKeys.get(Math.abs(id.hashCode() % apiKeys.size())));
+        // 直接返回最新的API密钥，不使用缓存
+        return configLoader.getApiKey();
     }
 
     /**

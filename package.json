@@ -1,0 +1,36 @@
+{
+  "name": "ai-chat-plugin-mcp-browser",
+  "version": "1.0.0",
+  "description": "MCP Browser Server for AI Chat Plugin Web Analysis",
+  "type": "module",
+  "main": "mcp-browser-server.js",
+  "bin": {
+    "ai-chat-plugin-browser": "./mcp-browser-server.js"
+  },
+  "scripts": {
+    "start": "node mcp-browser-server.js",
+    "dev": "node --inspect mcp-browser-server.js",
+    "install-chrome": "node install-chrome.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "puppeteer": "^21.0.0",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "web-analysis",
+    "ai-chat-plugin",
+    "minecraft"
+  ],
+  "author": "AI Chat Plugin Team",
+  "license": "MIT"
+} 

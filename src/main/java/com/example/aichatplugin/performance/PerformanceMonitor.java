@@ -72,9 +72,9 @@ public class PerformanceMonitor {
     
     private void loadConfig() {
         checkInterval = config.getInt("performance.check-interval", 10);
-        tpsThresholdFull = config.getDouble("performance.tps_thresholds.full", 18.0);
-        tpsThresholdLite = config.getDouble("performance.tps_thresholds.lite", 15.0);
-        tpsThresholdBasic = config.getDouble("performance.tps_thresholds.basic", 10.0);
+        tpsThresholdFull = config.getDouble("performance.tps-threshold-full", 18.0);
+        tpsThresholdLite = config.getDouble("performance.tps-threshold-lite", 15.0);
+        tpsThresholdBasic = config.getDouble("performance.tps-threshold-basic", 10.0);
         
         // 加载手动模式配置
         manualModeEnabled = config.getBoolean("performance.manual-mode-enabled", false);
@@ -310,7 +310,7 @@ public class PerformanceMonitor {
     private void sendModeChangeMessage(OperationMode newMode) {
         try {
             // 获取配置的模式切换消息
-            String configMessage = config.getString("messages.mode_change." + newMode.name().toLowerCase());
+            String configMessage = config.getString("messages.mode-change." + newMode.name().toLowerCase());
             final String message;
             if (configMessage == null || configMessage.trim().isEmpty()) {
                 // 使用默认消息
@@ -422,7 +422,7 @@ public class PerformanceMonitor {
         }
         
         // 广播模式切换通知
-        String message = config.getString("messages.mode_change." + newMode.name().toLowerCase());
+        String message = config.getString("messages.mode-change." + newMode.name().toLowerCase());
         if (message != null) {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 Bukkit.broadcastMessage(message);
@@ -586,7 +586,7 @@ public class PerformanceMonitor {
             // 重要功能 (优先级 4-6)
             FEATURE_PRIORITIES.put("permission_check", 4);
             FEATURE_PRIORITIES.put("cooldown_management", 4);
-            FEATURE_PRIORITIES.put("rate_limiting", 5);
+            FEATURE_PRIORITIES.put("rate-limiting", 5);
             FEATURE_PRIORITIES.put("message_validation", 5);
             
             // 事件响应功能 (优先级 6-9) - 性能敏感

@@ -129,44 +129,44 @@ public class PerformanceCommand implements CommandExecutor, TabCompleter, Listen
     }
     
     private int getCacheDuration() {
-        return plugin.getConfig().getInt(CONFIG_CACHE_DURATION, DEFAULT_CACHE_DURATION);
+        return plugin.getConfigLoader().getInt(CONFIG_CACHE_DURATION, DEFAULT_CACHE_DURATION);
     }
     
     private int getDisplayMinutes() {
-        return plugin.getConfig().getInt(CONFIG_DISPLAY_MINUTES, DEFAULT_DISPLAY_MINUTES);
+        return plugin.getConfigLoader().getInt(CONFIG_DISPLAY_MINUTES, DEFAULT_DISPLAY_MINUTES);
     }
     
     private int getMaxEntries() {
-        return plugin.getConfig().getInt(CONFIG_MAX_ENTRIES, DEFAULT_MAX_ENTRIES);
+        return plugin.getConfigLoader().getInt(CONFIG_MAX_ENTRIES, DEFAULT_MAX_ENTRIES);
     }
     
     private int getCleanupInterval() {
-        return plugin.getConfig().getInt(CONFIG_CLEANUP_INTERVAL, DEFAULT_CLEANUP_INTERVAL);
+        return plugin.getConfigLoader().getInt(CONFIG_CLEANUP_INTERVAL, DEFAULT_CLEANUP_INTERVAL);
     }
     
     private double getTpsThreshold() {
-        return plugin.getConfig().getDouble(CONFIG_THRESHOLDS + ".tps", DEFAULT_TPS_THRESHOLD);
+        return plugin.getConfigLoader().getDouble(CONFIG_THRESHOLDS + ".tps", DEFAULT_TPS_THRESHOLD);
     }
     
     private double getCpuThreshold() {
-        return plugin.getConfig().getDouble(CONFIG_THRESHOLDS + ".cpu", DEFAULT_CPU_THRESHOLD);
+        return plugin.getConfigLoader().getDouble(CONFIG_THRESHOLDS + ".cpu", DEFAULT_CPU_THRESHOLD);
     }
     
     private double getMemoryThreshold() {
-        return plugin.getConfig().getDouble(CONFIG_THRESHOLDS + ".memory", DEFAULT_MEMORY_THRESHOLD);
+        return plugin.getConfigLoader().getDouble(CONFIG_THRESHOLDS + ".memory", DEFAULT_MEMORY_THRESHOLD);
     }
     
     private String getTpsWarning() {
-        return plugin.getConfig().getString(CONFIG_WARNINGS + ".tps", DEFAULT_TPS_WARNING);
+        return plugin.getConfigLoader().getString(CONFIG_WARNINGS + ".tps", DEFAULT_TPS_WARNING);
     }
     
     private String getCpuWarning(double value) {
-        String warning = plugin.getConfig().getString(CONFIG_WARNINGS + ".cpu", DEFAULT_CPU_WARNING);
+        String warning = plugin.getConfigLoader().getString(CONFIG_WARNINGS + ".cpu", DEFAULT_CPU_WARNING);
         return warning.replace("{value}", String.format("%.1f", value));
     }
     
     private String getMemoryWarning(double value) {
-        String warning = plugin.getConfig().getString(CONFIG_WARNINGS + ".memory", DEFAULT_MEMORY_WARNING);
+        String warning = plugin.getConfigLoader().getString(CONFIG_WARNINGS + ".memory", DEFAULT_MEMORY_WARNING);
         return warning.replace("{value}", String.format("%.1f", value));
     }
     

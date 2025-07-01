@@ -1,0 +1,27 @@
+# AI Chat Plugin - Cursor MCP 配置
+
+## MCP 服务器配置
+此项目包含一个 MCP (Model Context Protocol) 浏览器服务器，允许 AI 直接访问和分析网页。
+
+### 可用工具：
+1. **visit_webpage** - 访问指定网页并获取内容
+2. **analyze_page_content** - 分析网页内容结构
+3. **check_api_endpoints** - 检查网页中的API端点和网络请求
+4. **test_form_interaction** - 测试网页表单交互
+5. **extract_errors** - 提取网页中的错误信息
+
+### 使用方法：
+当用户提供网址时，优先使用 MCP 工具进行分析，而不是要求用户手动提供信息。
+
+### 常见用例：
+- 分析 Web 界面问题
+- 检查 API 端点状态
+- 提取错误信息
+- 测试表单功能
+- 页面结构分析
+
+### 配置说明：
+- 服务器运行在 stdio 传输层
+- 使用 Puppeteer 进行浏览器自动化
+- 支持截图和网络监控
+- 自动处理 JavaScript 渲染的页面 

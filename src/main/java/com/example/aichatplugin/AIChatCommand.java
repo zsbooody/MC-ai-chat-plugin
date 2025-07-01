@@ -26,6 +26,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.stream.Collectors;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.ChatColor;
+import java.io.File;
 
 /**
  * AI聊天命令处理器
@@ -278,11 +281,11 @@ public class AIChatCommand implements CommandExecutor {
                 player.sendMessage("找不到玩家: " + args[0]);
                 return true;
             }
-            List<String> vipUsers = plugin.getConfig().getStringList("vip-users");
+            List<String> vipUsers = config.getConfig().getStringList("advanced.vip-users");
             if (!vipUsers.contains(target.getUniqueId().toString())) {
                 vipUsers.add(target.getUniqueId().toString());
-                plugin.getConfig().set("vip-users", vipUsers);
-                plugin.saveConfig();
+                config.set("advanced.vip-users", vipUsers);
+                config.saveConfig();
                 player.sendMessage("已将 " + target.getName() + " 提升为VIP用户！");
             } else {
                 player.sendMessage(target.getName() + " 已经是VIP用户。");
@@ -292,7 +295,7 @@ public class AIChatCommand implements CommandExecutor {
         
         // 2. 处理帮助命令（无参数）
         if (args.length == 0) {
-            sendHelpMessage(player);
+            sendHelpMessage(player, 1);
             return true;
         }
         
@@ -319,10 +322,31 @@ public class AIChatCommand implements CommandExecutor {
         if ("clear".equals(subCommand) || "clearhistory".equals(subCommand)) {
             return handleClearHistory(player);
         }
+        if ("test-config".equals(subCommand)) {
+            testConfigSync(player);
+            return true;
+        }
+        if ("diagnose".equals(subCommand)) {
+            if (plugin.getDiagnosticManager() != null) {
+                plugin.getDiagnosticManager().runConfigDiagnostics(player);
+            } else {
+                player.sendMessage("§c诊断管理器未初始化");
+            }
+            return true;
+        }
         
         // 4. 处理帮助子命令
-        if ("help".equals(subCommand)) {
-            sendHelpMessage(player);
+        if ("help".equalsIgnoreCase(args[0])) {
+            int page = 1;
+            if (args.length > 1) {
+                try {
+                    page = Integer.parseInt(args[1]);
+                } catch (NumberFormatException e) {
+                    sender.sendMessage(ChatColor.RED + "无效的页码。");
+                    return true;
+                }
+            }
+            sendHelpMessage(player, page);
             return true;
         }
         
@@ -529,9 +553,8 @@ public class AIChatCommand implements CommandExecutor {
         try {
             // 切换调试模式
             boolean currentDebug = plugin.isDebugEnabled();
-            plugin.getConfig().set("debug", !currentDebug);
-            plugin.saveConfig();
-            plugin.getConfigLoader().reloadConfig(); // 重载配置使更改生效
+            config.setDebugEnabled(!currentDebug);
+            config.reloadConfig(); // 重载配置使更改生效
             
             boolean newDebug = plugin.isDebugEnabled();
             player.sendMessage(String.format("§6调试模式已%s", 
@@ -865,12 +888,10 @@ public class AIChatCommand implements CommandExecutor {
             return 0;
         }
         if (player.hasPermission("aichat.cooldown.vip") || player.hasPermission("aichat.vip")) {
-            long cooldown = config.getLong("command.cooldown.vip", 1000);
-            return Math.max(500, cooldown);
+            return config.getVipUserCooldown();
         }
         
-        long cooldown = config.getLong("command.cooldown.normal", 3000);
-        return Math.max(1000, cooldown);
+        return config.getNormalUserCooldown();
     }
     
     private boolean checkMessageFrequency(Player player) {
@@ -901,15 +922,15 @@ public class AIChatCommand implements CommandExecutor {
             long nextAvailable = oldestValid != null ? 
                 (oldestValid + 60000) - now : 1000;
             String timeLeftStr = String.format("%.1f", Math.max(0.1, nextAvailable / 1000.0));
-            player.sendMessage(config.getMessageFormat("rate_limit").replace("{time}", timeLeftStr));
+            player.sendMessage(config.getMessageFormat("rate-limit").replace("{time}", timeLeftStr));
             return false;
         }
         return true;
     }
     
-    private void sendHelpMessage(Player player) {
+    private void sendHelpMessage(Player player, int page) {
         // 从ConfigLoader获取帮助消息
-        String pageHeader = plugin.getConfigLoader().getMessageFormat("help.page_header");
+        String pageHeader = plugin.getConfigLoader().getMessageFormat("help.page-header");
         String header = plugin.getConfigLoader().getMessageFormat("help.header");
         String basic = plugin.getConfigLoader().getMessageFormat("help.basic");
         String admin = plugin.getConfigLoader().getMessageFormat("help.admin");
@@ -947,7 +968,7 @@ public class AIChatCommand implements CommandExecutor {
             config.getMessageFormat("help.admin"),
             config.getMessageFormat("help.vip"),
             config.getMessageFormat("help.empty"),
-            config.getMessageFormat("help.page_header"),
+            config.getMessageFormat("help.page-header"),
             config.getMessageFormat("help.page_footer")
         );
         
@@ -1196,5 +1217,53 @@ public class AIChatCommand implements CommandExecutor {
         stats.put("activeUsers", (long) cooldownMap.size());
         stats.put("cacheSize", (long) helpCache.size());
         return stats;
+    }
+
+    /**
+     * 测试配置同步
+     */
+    private void testConfigSync(Player player) {
+        player.sendMessage(ChatColor.GOLD + "=== 配置同步测试 ===");
+        
+        // 读取当前配置值
+        long normalCooldown = plugin.getConfigLoader().getNormalUserCooldown();
+        long vipCooldown = plugin.getConfigLoader().getVipUserCooldown();
+        int maxMessages = plugin.getConfigLoader().getMaxMessagesPerMinute();
+        boolean filterEnabled = plugin.getConfigLoader().isFilterEnabled();
+        
+        player.sendMessage(ChatColor.YELLOW + "当前配置值:");
+        player.sendMessage(ChatColor.GRAY + "  普通用户冷却: " + ChatColor.WHITE + normalCooldown + "ms");
+        player.sendMessage(ChatColor.GRAY + "  VIP用户冷却: " + ChatColor.WHITE + vipCooldown + "ms");
+        player.sendMessage(ChatColor.GRAY + "  每分钟最大消息: " + ChatColor.WHITE + maxMessages);
+        player.sendMessage(ChatColor.GRAY + "  内容过滤: " + ChatColor.WHITE + (filterEnabled ? "启用" : "禁用"));
+        
+        // 直接从配置文件读取
+        FileConfiguration fileConfig = plugin.getConfigLoader().getConfig();
+        long fileCooldown1 = fileConfig.getLong("performance.rate-limit.normal-user", -1);
+        long fileCooldown2 = fileConfig.getLong("performance.rate-limit.vip-user", -1);
+        int fileMaxMsg = fileConfig.getInt("performance.rate-limit.max-messages-per-minute", -1);
+        boolean fileFilter = fileConfig.getBoolean("advanced.filter-enabled", false);
+        
+        player.sendMessage(ChatColor.YELLOW + "配置文件值:");
+        player.sendMessage(ChatColor.GRAY + "  performance.rate-limit.normal-user: " + ChatColor.WHITE + fileCooldown1);
+        player.sendMessage(ChatColor.GRAY + "  performance.rate-limit.vip-user: " + ChatColor.WHITE + fileCooldown2);
+        player.sendMessage(ChatColor.GRAY + "  performance.rate-limit.max-messages-per-minute: " + ChatColor.WHITE + fileMaxMsg);
+        player.sendMessage(ChatColor.GRAY + "  advanced.filter-enabled: " + ChatColor.WHITE + fileFilter);
+        
+        // 测试setter方法
+        player.sendMessage(ChatColor.YELLOW + "测试配置更新...");
+        plugin.getConfigLoader().setNormalUserCooldown(5000);
+        plugin.getConfigLoader().setVipUserCooldown(2000);
+        
+        // 重新读取
+        long newNormal = plugin.getConfigLoader().getNormalUserCooldown();
+        long newVip = plugin.getConfigLoader().getVipUserCooldown();
+        
+        player.sendMessage(ChatColor.GRAY + "  更新后普通冷却: " + ChatColor.WHITE + newNormal);
+        player.sendMessage(ChatColor.GRAY + "  更新后VIP冷却: " + ChatColor.WHITE + newVip);
+        
+        // 恢复原值
+        plugin.getConfigLoader().setNormalUserCooldown(normalCooldown);
+        plugin.getConfigLoader().setVipUserCooldown(vipCooldown);
     }
 } 

@@ -20,6 +20,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.nio.file.Path;
+import org.bukkit.Location;
+import com.example.aichatplugin.util.PromptBuilder;
 
 /**
  * 对话管理器
@@ -75,9 +77,6 @@ public class ConversationManager {
     private static final long ENV_CACHE_TTL = 30000; // 30秒
     private static final long SAVE_INTERVAL = 600L; // 30秒 (600 ticks = 30秒)
     private static final long CACHE_JITTER = 5000; // 5秒随机范围
-    
-    // 消息格式
-    private String replyFormat = "&7[AI] &f{text}";
     
     // 备用响应
     private String fallbackResponse = "抱歉，我现在无法回应。请稍后再试。";
@@ -646,50 +645,63 @@ public class ConversationManager {
                              PlayerProfileManager.PlayerProfile profile,
                              List<com.example.aichatplugin.Message> history, String currentMessage, String sender) {
         try {
-            // 🔧 简化：让AI自主判断是否需要环境信息
-            String decisionPrompt = buildSimpleDecisionPrompt(history, currentMessage);
-            String aiDecision = aiService.generateResponse(decisionPrompt, player);
-            boolean needsEnv = needsEnvironment(aiDecision);
-            plugin.debug("AI决策结果 - 玩家: " + player.getName() + ", 决策: " + aiDecision + ", 需要环境: " + needsEnv);
-            
-            StringBuilder fullPrompt = new StringBuilder();
-            int startIndex = Math.max(0, history.size() - 3);
-            if (history.isEmpty()) {
-                fullPrompt.append("新对话开始\n");
-            } else {
-                for (int i = startIndex; i < history.size(); i++) {
-                    com.example.aichatplugin.Message msg = history.get(i);
-                    // 使用一致的格式标识角色
-                    if (msg.isAI()) {
-                        fullPrompt.append("你（AI助手）: ").append(msg.getContent()).append("\n");
-                    } else if (msg.getSender().equals("SYSTEM")) {
-                        fullPrompt.append("系统事件: ").append(msg.getContent()).append("\n");
-                    } else {
-                        fullPrompt.append("玩家").append(msg.getSender()).append(": ").append(msg.getContent()).append("\n");
-                    }
-                }
-            }
-            // 当前消息
-            if (sender.equals("SYSTEM")) {
-                fullPrompt.append("系统事件: ").append(currentMessage).append("\n");
-            } else {
-                fullPrompt.append("玩家").append(sender).append(": ").append(currentMessage).append("\n");
-            }
+            // 🔧 智能环境收集策略：根据消息内容和频率决定是否收集环境信息
+            boolean needsEnv = shouldCollectEnvironment(player, currentMessage, history);
+            plugin.debug("智能环境决策 - 玩家: " + player.getName() + ", 需要环境: " + needsEnv + ", 原因: " + getDecisionReason(player, currentMessage, history));
             
             if (needsEnv) {
                 plugin.debug("需要环境信息 - 玩家: " + player.getName());
-                // 使用新的环境收集机制
+                // 记录环境收集时间和位置
+                lastEnvironmentCollection.put(playerId, System.currentTimeMillis());
+                lastKnownLocation.put(playerId, player.getLocation().clone());
+                
+                // 使用角色保护的prompt构建机制
                 getEnvironmentInfo(player).thenAccept(envInfo -> {
-                    StringBuilder responsePrompt = new StringBuilder(fullPrompt);
-                    responsePrompt.append("\n环境信息：\n").append(envInfo).append("\n");
-                    stage3GenerateResponse(responsePrompt.toString(), playerId, sender, currentMessage, player);
+                    String roleProtectedPrompt = buildRoleProtectedPrompt(history, currentMessage, sender, envInfo);
+                    stage3GenerateResponse(roleProtectedPrompt, playerId, sender, currentMessage, player);
+                }).exceptionally(envError -> {
+                    // 🔧 改进：具体的环境信息收集异常处理
+                    plugin.getLogger().log(Level.WARNING, "收集环境信息失败，使用无环境信息模式: " + envError.getMessage());
+                    String roleProtectedPrompt = buildRoleProtectedPrompt(history, currentMessage, sender, null);
+                    stage3GenerateResponse(roleProtectedPrompt, playerId, sender, currentMessage, player);
+                    return null;
                 });
             } else {
-                stage3GenerateResponse(fullPrompt.toString(), playerId, sender, currentMessage, player);
+                String roleProtectedPrompt = buildRoleProtectedPrompt(history, currentMessage, sender, null);
+                stage3GenerateResponse(roleProtectedPrompt, playerId, sender, currentMessage, player);
             }
+        } catch (IllegalArgumentException e) {
+            // 🔧 改进：参数验证异常
+            plugin.getLogger().warning("消息处理参数错误 - 玩家: " + player.getName() + ", 错误: " + e.getMessage());
+        } catch (SecurityException e) {
+            // 🔧 改进：安全相关异常
+            plugin.getLogger().warning("消息处理安全异常 - 玩家: " + player.getName() + ", 错误: " + e.getMessage());
+        } catch (OutOfMemoryError e) {
+            // 🔧 改进：内存不足异常
+            plugin.getLogger().severe("内存不足，无法处理消息 - 玩家: " + player.getName());
+            recordError("out_of_memory");
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "处理消息时发生错误", e);
+            // 🔧 改进：其他未预期异常的详细记录
+            plugin.getLogger().log(Level.SEVERE, "消息处理发生未预期错误 - 玩家: " + player.getName() + 
+                ", 消息: " + currentMessage + ", 类型: " + e.getClass().getSimpleName(), e);
+            recordError("message_processing_error");
         }
+    }
+    
+    /**
+     * 🔧 构建角色保护的提示词（核心身份保护机制）
+     * 确保AI始终保持一致的角色和行为模式，不被历史记录影响
+     */
+    private String buildRoleProtectedPrompt(List<com.example.aichatplugin.Message> history, 
+                                          String currentMessage, String sender, String envInfo) {
+        String environmentInfo = envInfo != null ? envInfo : "";
+        
+        // 使用外部化的提示词构建器
+        return new PromptBuilder(config)
+            .withHistory(history)
+            .withEnvironmentContext(environmentInfo)
+            .withEventContext(currentMessage)
+            .build();
     }
     
     /**
@@ -707,16 +719,46 @@ public class ConversationManager {
                 
                 // 提交到输出阶段
                 processingStages[STAGE_OUTPUT].submit(() -> {
-                    addMessage(playerId, sender, currentMessage, false);
-                    addMessage(playerId, "AI", finalResponse, true);
-                    responseQueue.offer(new ResponseTask(finalResponse));
-                    plugin.debug("响应已加入队列 - 玩家: " + player.getName());
+                    try {
+                        addMessage(playerId, sender, currentMessage, false);
+                        addMessage(playerId, "AI", finalResponse, true);
+                        responseQueue.offer(new ResponseTask(finalResponse));
+                        plugin.debug("响应已加入队列 - 玩家: " + player.getName());
+                    } catch (IllegalStateException e) {
+                        // 🔧 改进：队列状态异常
+                        plugin.getLogger().warning("响应队列状态异常 - 玩家: " + player.getName() + ", 错误: " + e.getMessage());
+                    } catch (OutOfMemoryError e) {
+                        // 🔧 改进：内存不足异常
+                        plugin.getLogger().severe("内存不足，无法添加响应到队列 - 玩家: " + player.getName());
+                        recordError("response_queue_oom");
+                    } catch (Exception e) {
+                        // 🔧 改进：输出阶段异常的详细记录
+                        plugin.getLogger().log(Level.WARNING, "输出阶段处理失败 - 玩家: " + player.getName() + 
+                            ", 响应长度: " + finalResponse.length(), e);
+                        recordError("output_stage_error");
+                    }
                 });
             } else {
-                plugin.debug("响应生成失败 - 玩家: " + player.getName());
+                plugin.getLogger().warning("AI响应生成失败或为空 - 玩家: " + player.getName());
+                recordError("empty_ai_response");
             }
+        } catch (IllegalArgumentException e) {
+            // 🔧 改进：提示词参数异常
+            plugin.getLogger().warning("AI响应生成参数错误 - 玩家: " + player.getName() + ", 错误: " + e.getMessage());
+            recordError("invalid_prompt_params");
+        } catch (SecurityException e) {
+            // 🔧 改进：安全相关异常
+            plugin.getLogger().warning("AI响应生成安全异常 - 玩家: " + player.getName() + ", 错误: " + e.getMessage());
+            recordError("ai_security_error");
+        } catch (OutOfMemoryError e) {
+            // 🔧 改进：内存不足异常
+            plugin.getLogger().severe("内存不足，无法生成AI响应 - 玩家: " + player.getName());
+            recordError("ai_response_oom");
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "生成响应时发生错误", e);
+            // 🔧 改进：AI响应生成的详细异常记录
+            plugin.getLogger().log(Level.SEVERE, "AI响应生成发生未预期错误 - 玩家: " + player.getName() + 
+                ", 提示词长度: " + prompt.length() + ", 类型: " + e.getClass().getSimpleName(), e);
+            recordError("ai_response_generation_error");
         }
     }
     
@@ -828,6 +870,11 @@ public class ConversationManager {
      * 🔧 构建简化的决策提示（让AI自主判断）
      */
     private String buildSimpleDecisionPrompt(List<com.example.aichatplugin.Message> history, String currentMessage) {
+        // 使用外部化的决策提示词模板
+        String template = config.getEnvironmentDecisionPrompt();
+        
+        // 如果模板不存在，使用默认值
+        if (template == null || template.isEmpty()) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是Minecraft助手。判断回答这个问题是否需要了解玩家周围的环境信息（如位置、方块、实体等）。\n\n");
         
@@ -867,6 +914,10 @@ public class ConversationManager {
         prompt.append("如果需要环境信息回复YES，否则回复NO。");
               
         return prompt.toString();
+        }
+        
+        // 使用模板并替换变量
+        return template.replace("{message}", currentMessage);
     }
     
     /**
@@ -895,7 +946,9 @@ public class ConversationManager {
      */
     private boolean needsEnvironment(String aiDecision) {
         if (aiDecision == null || aiDecision.trim().isEmpty()) {
-            return false;
+            // 🔧 修复：AI决策为空时，默认获取环境信息
+            plugin.debug("AI决策为空，默认获取环境信息");
+            return true;
         }
         
         String clean = aiDecision.toLowerCase().trim();
@@ -919,19 +972,19 @@ public class ConversationManager {
             "没必要", "不必", "跳过", "忽略"
         };
         
+        // 先检查消极关键词（明确不需要的情况）
+        for (String keyword : negativeKeywords) {
+            if (clean.contains(keyword)) {
+                plugin.debug("匹配消极关键词: " + keyword);
+                return false;
+            }
+        }
+        
         // 检查积极关键词
         for (String keyword : positiveKeywords) {
             if (clean.contains(keyword)) {
                 plugin.debug("匹配积极关键词: " + keyword);
                 return true;
-            }
-        }
-        
-        // 检查消极关键词
-        for (String keyword : negativeKeywords) {
-            if (clean.contains(keyword)) {
-                plugin.debug("匹配消极关键词: " + keyword);
-                return false;
             }
         }
         
@@ -941,9 +994,9 @@ public class ConversationManager {
             return true;
         }
         
-        // 🔧 优化4：默认策略 - 如果不确定，优先不获取环境信息（避免性能浪费）
-        plugin.debug("无法确定意图，默认不获取环境信息");
-        return false;
+        // 🔧 修复：默认策略改为获取环境信息（提供更好的用户体验）
+        plugin.debug("无法确定意图，默认获取环境信息以提供更好的回复");
+        return true;
     }
     
     /**
@@ -951,21 +1004,62 @@ public class ConversationManager {
      */
     private String generateResponseWithRetry(String prompt, Player player) {
         int retries = 0;
+        Exception lastException = null;
+        
         while (retries < MAX_RETRIES) {
             try {
-                return aiService.generateResponse(prompt, player);
+                String response = aiService.generateResponse(prompt, player);
+                if (response != null && !response.trim().isEmpty()) {
+                    plugin.debug("AI响应生成成功 - 玩家: " + player.getName() + ", 重试次数: " + retries);
+                    return response;
+                } else {
+                    plugin.getLogger().warning("AI服务返回空响应 - 玩家: " + player.getName() + ", 重试: " + retries);
+                    lastException = new RuntimeException("AI服务返回空响应");
+                }
             } catch (Exception e) {
-                retries++;
-                if (retries < MAX_RETRIES) {
-                    try {
-                        Thread.sleep(RETRY_DELAY);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
+                lastException = e;
+                plugin.getLogger().warning("AI响应生成异常 - 玩家: " + player.getName() + 
+                    ", 重试: " + retries + "/" + MAX_RETRIES + 
+                    ", 异常类型: " + e.getClass().getSimpleName() + 
+                    ", 错误信息: " + e.getMessage());
+                
+                // 如果是配置问题或API密钥问题，不需要重试
+                if (e.getMessage() != null && 
+                    (e.getMessage().contains("API密钥") || 
+                     e.getMessage().contains("401") || 
+                     e.getMessage().contains("Unauthorized"))) {
+                    plugin.getLogger().severe("API认证失败，停止重试 - 玩家: " + player.getName());
+                    break;
+                }
+            }
+            
+            retries++;
+            if (retries < MAX_RETRIES) {
+                try {
+                    Thread.sleep(RETRY_DELAY);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    plugin.getLogger().warning("重试等待被中断 - 玩家: " + player.getName());
+                    break;
                 }
             }
         }
+        
+        // 记录最终失败的详细信息
+        if (lastException != null) {
+            plugin.getLogger().severe("AI响应生成最终失败 - 玩家: " + player.getName() + 
+                ", 总重试次数: " + retries + 
+                ", 最后异常: " + lastException.getClass().getSimpleName() + 
+                " - " + lastException.getMessage());
+            
+            // 如果是调试模式，打印完整堆栈
+            if (config.isDebugEnabled()) {
+                plugin.getLogger().log(Level.SEVERE, "AI响应生成详细错误堆栈:", lastException);
+            }
+        } else {
+            plugin.getLogger().severe("AI响应生成失败，原因未知 - 玩家: " + player.getName());
+        }
+        
         return null;
     }
     
@@ -988,62 +1082,144 @@ public class ConversationManager {
      * 关闭管理器
      */
     public void shutdown() {
-        // 清理所有队列和缓存
-        playerQueues.clear();
-        responseQueue.clear();
-        envCache.clear();
-        messageCache.clear();
-        historyChanged.clear();
+        plugin.getLogger().info("开始关闭ConversationManager...");
         
-        // 异步保存所有脏数据，带超时控制
-        CompletableFuture.runAsync(this::incrementalSave)
-            .orTimeout(3, TimeUnit.SECONDS)
-            .exceptionally(ex -> {
-                plugin.getLogger().warning("关闭时保存超时: " + ex.getMessage());
-                return null;
-            });
+        // 🔧 改进：标记正在关闭状态，防止新任务提交
+        try {
+            // 首先停止接收新任务
+            for (ExecutorService stage : processingStages) {
+                if (stage != null && !stage.isShutdown()) {
+                    stage.shutdown(); // 优雅关闭，不接受新任务但完成现有任务
+                }
+            }
+            
+            if (executor != null && !executor.isShutdown()) {
+                executor.shutdown();
+            }
+            
+            if (responseScheduler != null && !responseScheduler.isShutdown()) {
+                responseScheduler.shutdown();
+            }
+            
+            plugin.getLogger().info("已停止接收新任务，等待现有任务完成...");
+            
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "停止任务接收时发生错误", e);
+        }
         
-        // 关闭所有线程池
-        for (ExecutorService stage : processingStages) {
+        // 🔧 改进：异步保存数据，不阻塞关闭流程
+        CompletableFuture<Void> saveTask = CompletableFuture.runAsync(() -> {
+            try {
+                plugin.getLogger().info("保存对话历史数据...");
+                incrementalSave();
+                plugin.getLogger().info("对话历史数据保存完成");
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "保存对话历史时发生错误", e);
+            }
+        }).orTimeout(10, TimeUnit.SECONDS) // 🔧 限制保存时间
+        .exceptionally(ex -> {
+            if (ex instanceof TimeoutException) {
+                plugin.getLogger().warning("保存对话历史超时，强制继续关闭流程");
+            } else {
+                plugin.getLogger().log(Level.WARNING, "保存对话历史失败", ex);
+            }
+            return null;
+        });
+        
+        // 🔧 改进：等待处理阶段线程池关闭
+        boolean allStagesClosed = true;
+        for (int i = 0; i < processingStages.length; i++) {
+            ExecutorService stage = processingStages[i];
             if (stage != null) {
-                stage.shutdown();
                 try {
-                    if (!stage.awaitTermination(5, TimeUnit.SECONDS)) {
+                    if (!stage.awaitTermination(3, TimeUnit.SECONDS)) {
+                        plugin.getLogger().warning("处理阶段 " + i + " 未能在3秒内关闭，强制关闭");
                         stage.shutdownNow();
+                        if (!stage.awaitTermination(2, TimeUnit.SECONDS)) {
+                            plugin.getLogger().warning("处理阶段 " + i + " 强制关闭失败");
+                            allStagesClosed = false;
+                        }
                     }
                 } catch (InterruptedException e) {
+                    plugin.getLogger().warning("等待处理阶段 " + i + " 关闭时被中断");
                     stage.shutdownNow();
                     Thread.currentThread().interrupt();
+                    allStagesClosed = false;
                 }
             }
         }
         
-        // 关闭其他服务
+        // 🔧 改进：关闭主线程池
         if (executor != null) {
-            executor.shutdown();
             try {
-                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
+                    plugin.getLogger().warning("主线程池未能在3秒内关闭，强制关闭");
                     executor.shutdownNow();
+                    if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+                        plugin.getLogger().warning("主线程池强制关闭失败");
+                    }
                 }
             } catch (InterruptedException e) {
+                plugin.getLogger().warning("等待主线程池关闭时被中断");
                 executor.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }
         
+        // 🔧 改进：关闭响应调度器
         if (responseScheduler != null) {
-            responseScheduler.shutdown();
             try {
-                if (!responseScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                if (!responseScheduler.awaitTermination(3, TimeUnit.SECONDS)) {
+                    plugin.getLogger().warning("响应调度器未能在3秒内关闭，强制关闭");
                     responseScheduler.shutdownNow();
+                    if (!responseScheduler.awaitTermination(2, TimeUnit.SECONDS)) {
+                        plugin.getLogger().warning("响应调度器强制关闭失败");
+                    }
                 }
             } catch (InterruptedException e) {
+                plugin.getLogger().warning("等待响应调度器关闭时被中断");
                 responseScheduler.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }
         
-        plugin.getLogger().info("ConversationManager 已安全关闭");
+        // 🔧 改进：等待保存任务完成（有超时）
+        try {
+            saveTask.get(2, TimeUnit.SECONDS); // 再等2秒保存完成
+        } catch (TimeoutException e) {
+            plugin.getLogger().warning("等待保存任务完成超时");
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "等待保存任务时发生错误", e);
+        }
+        
+        // 🔧 改进：清理所有数据结构
+        try {
+            playerQueues.clear();
+            responseQueue.clear();
+            envCache.clear();
+            messageCache.clear();
+            historyChanged.clear();
+            lastEnvironmentCollection.clear();
+            lastKnownLocation.clear();
+            lastResponseTime.clear();
+            lastResponse.clear();
+            historyVersions.clear();
+            
+            // 清理对话历史（注意并发安全）
+            conversationHistory.clear();
+            dirtyPlayers.clear();
+            
+            plugin.getLogger().info("数据结构清理完成");
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "清理数据结构时发生错误", e);
+        }
+        
+        // 🔧 报告关闭状态
+        if (allStagesClosed) {
+            plugin.getLogger().info("ConversationManager 已安全关闭");
+        } else {
+            plugin.getLogger().warning("ConversationManager 关闭完成，但部分线程池可能未完全关闭");
+        }
     }
 
     /**
@@ -1175,19 +1351,24 @@ public class ConversationManager {
         
         void execute() {
             try {
-                String formattedMessage = ConversationManager.this.replyFormat.replace("{text}", response);
-                String coloredMessage = ChatColor.translateAlternateColorCodes('&', formattedMessage);
-                plugin.debug("准备广播消息: " + coloredMessage);
+                // 构建带前缀的安全消息
+                String messageToSend = ChatColor.translateAlternateColorCodes('&', "&b[AI] &f" + response);
                 
+                plugin.debug("准备向所有玩家发送安全消息: " + messageToSend);
+                
+                // 安全的消息广播方式：遍历所有玩家并单独发送
+                Runnable broadcastTask = () -> {
+                    for (Player player : Bukkit.getOnlinePlayers()) {
+                        player.sendMessage(messageToSend);
+                    }
+                    plugin.debug("已向所有在线玩家发送AI响应: " + response);
+                };
+
                 // 确保在主线程中执行
                 if (Bukkit.isPrimaryThread()) {
-                    Bukkit.broadcastMessage(coloredMessage);
-                    plugin.debug("已广播AI响应: " + response);
+                    broadcastTask.run();
                 } else {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        Bukkit.broadcastMessage(coloredMessage);
-                        plugin.debug("已广播AI响应: " + response);
-                    });
+                    Bukkit.getScheduler().runTask(plugin, broadcastTask);
                 }
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "广播消息时发生错误", e);
@@ -1234,6 +1415,10 @@ public class ConversationManager {
         
         // 清理玩家队列
         playerQueues.remove(playerId);
+        
+        // 清理玩家相关的环境收集缓存
+        lastEnvironmentCollection.remove(playerId);
+        lastKnownLocation.remove(playerId);
     }
 
     /**
@@ -1245,12 +1430,12 @@ public class ConversationManager {
         plugin.debug("应用对话管理器新配置");
         
         // 更新对话设置
-        int maxHistory = config.getInt("conversation.max-history", 5);
-        int maxContextLength = config.getInt("conversation.max-context-length", 1000);
+        int maxHistory = config.getInt("history.max-history", 5);
+        int maxContextLength = config.getInt("history.max-context-length", 1000);
         
         // 更新配置
-        this.config.set("conversation.max-history", maxHistory);
-        this.config.set("conversation.max-context-length", maxContextLength);
+        this.config.set("history.max-history", maxHistory);
+        this.config.set("history.max-context-length", maxContextLength);
         
         // 清理历史记录
         conversationHistory.clear();
@@ -1336,8 +1521,9 @@ public class ConversationManager {
      * 清理过期缓存
      */
     private void cleanupEnvCache() {
+        long cacheTTL = config.getEnvironmentCacheTTL();
         envCache.entrySet().removeIf(entry -> 
-            System.currentTimeMillis() - entry.getValue().timestamp > ENV_CACHE_TTL
+            System.currentTimeMillis() - entry.getValue().timestamp > cacheTTL
         );
     }
 
@@ -1410,5 +1596,121 @@ public class ConversationManager {
         int dirtyCount = dirtyPlayers.size();
         int totalPlayers = conversationHistory.size();
         return String.format("当前状态: %d/%d 个玩家有未保存的历史记录", dirtyCount, totalPlayers);
+    }
+    
+    /**
+     * 🔧 智能环境收集决策
+     * 根据消息内容、时间间隔和上下文决定是否需要收集环境信息
+     */
+    private boolean shouldCollectEnvironment(Player player, String message, List<com.example.aichatplugin.Message> history) {
+        UUID playerId = player.getUniqueId();
+        String lowerMessage = message.toLowerCase().trim();
+        
+        // 1. 环境相关关键词 - 立即收集
+        String[] environmentKeywords = {
+            "这里", "位置", "在哪", "周围", "附近", "天气", "时间", "几点", "安全", 
+            "怪物", "动物", "方块", "建筑", "环境", "看看", "现在", "当前"
+        };
+        
+        for (String keyword : environmentKeywords) {
+            if (lowerMessage.contains(keyword)) {
+                return true;
+            }
+        }
+        
+        // 2. 第一次对话 - 收集环境信息
+        if (history.isEmpty()) {
+            return true;
+        }
+        
+        // 3. 检查最近的环境收集时间
+        long currentTime = System.currentTimeMillis();
+        Long lastEnvTime = lastEnvironmentCollection.get(playerId);
+        
+        // 4. 超过配置的时间间隔没有收集环境信息 - 收集一次
+        long collectionInterval = config.getSmartCollectionInterval();
+        if (lastEnvTime == null || currentTime - lastEnvTime > collectionInterval) {
+            return true;
+        }
+        
+        // 5. 玩家移动较远距离 - 重新收集
+        Location currentLoc = player.getLocation();
+        Location lastLoc = lastKnownLocation.get(playerId);
+        double changeThreshold = config.getLocationChangeThreshold();
+        if (lastLoc != null && currentLoc.distance(lastLoc) > changeThreshold) {
+            return true;
+        }
+        
+        // 6. 问号表示疑问，可能需要环境信息
+        if (lowerMessage.contains("?") || lowerMessage.contains("？")) {
+            return true;
+        }
+        
+        // 默认不收集（节省性能）
+        return false;
+    }
+    
+    /**
+     * 获取环境收集决策的原因（用于调试）
+     */
+    private String getDecisionReason(Player player, String message, List<com.example.aichatplugin.Message> history) {
+        UUID playerId = player.getUniqueId();
+        String lowerMessage = message.toLowerCase().trim();
+        
+        // 检查环境关键词
+        String[] environmentKeywords = {
+            "这里", "位置", "在哪", "周围", "附近", "天气", "时间", "几点", "安全", 
+            "怪物", "动物", "方块", "建筑", "环境", "看看", "现在", "当前"
+        };
+        
+        for (String keyword : environmentKeywords) {
+            if (lowerMessage.contains(keyword)) {
+                return "包含环境关键词: " + keyword;
+            }
+        }
+        
+        if (history.isEmpty()) {
+            return "首次对话";
+        }
+        
+        // 检查时间间隔
+        long currentTime = System.currentTimeMillis();
+        Long lastEnvTime = lastEnvironmentCollection.get(playerId);
+        long collectionInterval = config.getSmartCollectionInterval();
+        if (lastEnvTime == null || currentTime - lastEnvTime > collectionInterval) {
+            return "超过" + (collectionInterval/60000) + "分钟未收集环境信息";
+        }
+        
+        // 检查位置变化
+        Location currentLoc = player.getLocation();
+        Location lastLoc = lastKnownLocation.get(playerId);
+        double changeThreshold = config.getLocationChangeThreshold();
+        if (lastLoc != null && currentLoc.distance(lastLoc) > changeThreshold) {
+            return "位置变化超过" + changeThreshold + "格";
+        }
+        
+        if (lowerMessage.contains("?") || lowerMessage.contains("？")) {
+            return "包含疑问词";
+        }
+        
+        return "无需收集环境信息";
+    }
+    
+    // 添加新的缓存字段
+    private final Map<UUID, Long> lastEnvironmentCollection = new ConcurrentHashMap<>();
+    private final Map<UUID, Location> lastKnownLocation = new ConcurrentHashMap<>();
+
+    /**
+     * 🔧 新增：错误记录方法
+     */
+    private void recordError(String errorType) {
+        try {
+            if (plugin.getPerformanceMonitor() != null) {
+                plugin.getPerformanceMonitor().recordError(errorType);
+            }
+        } catch (Exception e) {
+            // 避免无限递归
+            plugin.getLogger().fine("记录错误统计时失败: " + e.getMessage());
+        }
     }
 }

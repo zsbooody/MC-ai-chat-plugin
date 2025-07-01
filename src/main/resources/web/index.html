@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Plugin - 配置管理中心</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    
+    <!-- Vue 3 生产版本 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    
+    <!-- Font Awesome 图标 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 自定义样式 -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <app-container></app-container>
+        </div>
+        
+    <!-- 组件模板 -->
+    <script type="text/x-template" id="app-container-template">
+        <div class="app-container">
+            <!-- 认证检查中 -->
+            <div v-if="isCheckingAuth" class="loading-container">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </div>
+                <p>正在验证访问权限...</p>
+            </div>
+            
+            <!-- 登录面板 -->
+            <login-panel 
+                v-else-if="!isAuthenticated"
+                @login-success="handleLoginSuccess">
+            </login-panel>
+            
+            <!-- 已认证的主界面 -->
+            <template v-else>
+                <!-- 头部 -->
+                <header class="app-header">
+                    <div class="header-content">
+                        <h1 class="app-title">
+                            <span class="app-icon">🤖</span>
+                            AI Chat Plugin
+                        </h1>
+                        <p class="app-subtitle">智能配置管理中心</p>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-sm btn-outline" @click="handleLogout">
+                            <i class="fas fa-sign-out-alt"></i> 退出
+                        </button>
+                    </div>
+                </header>
+                
+                <!-- 主内容区 -->
+                <main class="app-main">
+                    <dashboard 
+                        :status="systemStatus"
+                        :config="systemConfig"
+                        @open-config="showConfigPanel = true"
+                        @open-benchmark="showBenchmarkPanel = true"
+                        @open-memory="showMemoryPanel = true"
+                        @reload-config="reloadConfig"
+                        @save-history="saveHistory"
+                        @run-gc="runGC"
+                        @apply-optimizations="applyOptimizations">
+                    </dashboard>
+                </main>
+                
+                <!-- 配置面板 -->
+                <config-panel 
+                    v-if="showConfigPanel"
+                    :config="systemConfig"
+                    @close="showConfigPanel = false"
+                    @save="saveConfig">
+                </config-panel>
+        
+        <!-- 基准测试面板 -->
+                <benchmark-panel
+                    v-if="showBenchmarkPanel"
+                    @close="showBenchmarkPanel = false">
+                </benchmark-panel>
+                
+                <!-- 内存详情面板 -->
+                <memory-panel
+                    v-if="showMemoryPanel"
+                    @close="showMemoryPanel = false">
+                </memory-panel>
+            </template>
+            
+            <!-- 通知组件 -->
+            <notification-toast
+                v-if="notification.show"
+                :type="notification.type"
+                :message="notification.message"
+                @close="notification.show = false">
+            </notification-toast>
+        </div>
+    </script>
+    
+    <!-- 引入组件和主应用 -->
+    <script src="services/api.js"></script>
+    <script src="components/LoginPanel.js"></script>
+    <script src="components/Dashboard.js"></script>
+    <script src="components/ConfigPanel.js"></script>
+    <script src="components/BenchmarkPanel.js"></script>
+    <script src="components/MemoryPanel.js"></script>
+    <script src="components/NotificationToast.js"></script>
+    <script src="app.js"></script>
+</body>
+</html> 

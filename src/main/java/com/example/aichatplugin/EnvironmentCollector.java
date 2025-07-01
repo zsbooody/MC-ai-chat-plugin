@@ -30,11 +30,22 @@ import java.io.IOException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class EnvironmentCollector {
     private final AIChatPlugin plugin;
     private final ConfigLoader config;
-    private final Map<PlayerLocationKey, CachedEnvironment> cache = new WeakHashMap<>();
+    
+    // 🔧 修复：使用线程安全的缓存替代WeakHashMap
+    private final ConcurrentHashMap<PlayerLocationKey, CachedEnvironment> cache = new ConcurrentHashMap<>();
+    
+    // 🔧 添加：定期清理过期缓存的机制
+    private final ScheduledExecutorService cacheCleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "EnvironmentCache-Cleanup");
+        t.setDaemon(true);
+        return t;
+    });
+    
     private final Map<EntityType, String> entityNameMap = initEntityNameMap();
     private final Map<Material, String> blockNameMap = initBlockNameMap();
     private static final int DIRECTION_SEGMENTS = 8; // 每45度一个区间
@@ -53,15 +64,11 @@ public class EnvironmentCollector {
         this.currentScanRange = config.getEntityRange();
         this.executor = Executors.newFixedThreadPool(2);
         this.pendingScans = new ConcurrentHashMap<>();
-        this.maxEntities = plugin.getConfig().getInt("environment.max_entities", 20);
-        this.currentScanRange = plugin.getConfig().getDouble("environment.scan_range", 16.0);
+        this.maxEntities = config.getMaxEntities();
+        this.currentScanRange = config.getEntityRange();
         
-        // 启动缓存清理任务
-        plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            long now = System.currentTimeMillis();
-            cache.entrySet().removeIf(entry -> 
-                now - entry.getValue().timestamp > MAX_CACHE_AGE);
-        }, 6000, 6000); // 每5分钟清理一次
+        // 🔧 启动缓存清理任务
+        startCacheCleanup();
 
         // 启动性能监控任务
         plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -193,7 +200,7 @@ public class EnvironmentCollector {
         // 使用缓存数据
         if (cache.containsKey(key)) {
             CachedEnvironment cached = cache.get(key);
-            if (System.currentTimeMillis() - cached.timestamp < config.getCacheTTL()) {
+            if (System.currentTimeMillis() - cached.timestamp < config.getEnvironmentCacheTTL()) {
                 plugin.debug("使用缓存的环境信息: " + player.getName());
                 future.complete(cached.data);
                 return future;
@@ -228,58 +235,102 @@ public class EnvironmentCollector {
         World world = player.getWorld();
         StringBuilder info = new StringBuilder();
         
-        // 🔧 提供有意义的环境上下文，而不是机械状态
-        String biome = world.getBiome(loc).name().toLowerCase();
-        String heightDesc = getHeightDescription(loc.getY());
-        info.append(String.format("你在%s的%s", 
-            getBiomeDescription(biome), heightDesc));
-        
-        // 天气信息（作为背景上下文）
-        if (config.isShowWeather()) {
-            String weather = getWeatherInfo(world, loc);
-            plugin.debug("天气信息: " + weather);
-            if (!weather.equals("晴朗")) {
-                info.append("，现在").append(weather);
-            }
-        }
-        
-        // 只有夜晚时才提及时间
-        if (config.isShowTime()) {
-            long ticks = world.getTime();
-            boolean isNight = ticks >= 13000 && ticks <= 23000;
-            if (isNight) {
-                info.append("，夜晚");
-            }
-        }
-        
-        // 🔧 只提及重要的实体（敌对生物或有趣的生物）
-        if (config.isShowEntities()) {
-            List<String> entities = scanNearbyEntitiesOptimized(world, loc, player);
-            List<String> importantEntities = entities.stream()
-                .filter(this::isImportantEntity)
-                .limit(3)
-                .collect(Collectors.toList());
+        try {
+            // 🔧 提供有意义的环境上下文，而不是机械状态
+            String biome = world.getBiome(loc).name().toLowerCase();
+            String heightDesc = getHeightDescription(loc.getY());
+            info.append(String.format("你在%s的%s", 
+                getBiomeDescription(biome), heightDesc));
+            plugin.debug("基础位置信息已收集: " + info.toString());
             
-            if (!importantEntities.isEmpty()) {
-                info.append("。附近有").append(String.join("、", importantEntities));
+            // 天气信息（作为背景上下文）
+            try {
+                if (config.isShowWeather()) {
+                    String weather = getWeatherInfo(world, loc);
+                    plugin.debug("天气信息: " + weather);
+                    if (!weather.equals("晴朗")) {
+                        info.append("，现在").append(weather);
+                    }
+                } else {
+                    plugin.debug("天气信息显示被禁用");
+                }
+            } catch (Exception e) {
+                plugin.debug("收集天气信息时出错: " + e.getMessage());
             }
-        }
-        
-        // 🔧 优化：跳过方块扫描，这是最耗时的部分
-        // 或者仅在必要时获取脚下方块
-        if (config.isShowBlocks()) {
-            Block footBlock = world.getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ());
-            if (footBlock.getType() != Material.AIR) {
-                info.append("\n脚下: ").append(getLocalizedBlockName(footBlock));
+            
+            // 时间信息
+            try {
+                if (config.isShowTime()) {
+                    long ticks = world.getTime();
+                    boolean isNight = ticks >= 13000 && ticks <= 23000;
+                    plugin.debug("游戏时间: " + ticks + " ticks, 是否夜晚: " + isNight);
+                    if (isNight) {
+                        info.append("，夜晚");
+                    }
+                } else {
+                    plugin.debug("时间信息显示被禁用");
+                }
+            } catch (Exception e) {
+                plugin.debug("收集时间信息时出错: " + e.getMessage());
             }
+            
+            // 实体信息
+            try {
+                if (config.isShowEntities()) {
+                    plugin.debug("开始扫描实体...");
+                    List<String> entities = scanNearbyEntitiesOptimized(world, loc, player);
+                    plugin.debug("找到实体: " + entities.size() + " 个");
+                    
+                    List<String> importantEntities = entities.stream()
+                        .filter(this::isImportantEntity)
+                        .limit(3)
+                        .collect(Collectors.toList());
+                    
+                    plugin.debug("重要实体: " + importantEntities);
+                    if (!importantEntities.isEmpty()) {
+                        info.append("。附近有").append(String.join("、", importantEntities));
+                    }
+                } else {
+                    plugin.debug("实体信息显示被禁用");
+                }
+            } catch (Exception e) {
+                plugin.debug("收集实体信息时出错: " + e.getMessage());
+            }
+            
+            // 方块信息
+            try {
+                if (config.isShowBlocks()) {
+                    plugin.debug("开始扫描方块...");
+                    Block footBlock = world.getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ());
+                    if (footBlock.getType() != Material.AIR) {
+                        String blockName = getLocalizedBlockName(footBlock);
+                        info.append("\n脚下: ").append(blockName);
+                        plugin.debug("脚下方块: " + blockName);
+                    }
+                } else {
+                    plugin.debug("方块信息显示被禁用");
+                }
+            } catch (Exception e) {
+                plugin.debug("收集方块信息时出错: " + e.getMessage());
+            }
+            
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "收集环境信息时发生严重错误", e);
+            return "环境信息收集遇到错误，但位置大致在游戏世界中";
         }
         
         // 性能监控
         long duration = System.currentTimeMillis() - startTime;
         plugin.debug("环境收集完成: " + player.getName() + " | 耗时: " + duration + "ms");
-        plugin.debug("环境信息: " + info.toString());
+        plugin.debug("最终环境信息: " + info.toString());
         
-        return info.toString();
+        String result = info.toString();
+        if (result.trim().isEmpty()) {
+            result = "你在游戏世界中"; // 确保总是返回一些基本信息
+            plugin.debug("环境信息为空，使用默认信息");
+        }
+        
+        return result;
     }
     
     /**
@@ -295,9 +346,10 @@ public class EnvironmentCollector {
             // 使用getNearbyEntities而不是getEntities()，更高效
             Collection<Entity> nearbyEntities = world.getNearbyEntities(loc, limitedRange, limitedRange, limitedRange);
             
+            int maxEntities = config.getMaxEntities();
             int count = 0;
             for (Entity e : nearbyEntities) {
-                if (count >= 5) break; // 最多5个实体
+                if (count >= maxEntities) break; // 使用配置文件的最大实体数
                 
                 if (isValidEntityQuick(e, player)) {
                     entityNames.add(getLocalizedEntityName(e));
@@ -468,13 +520,20 @@ public class EnvironmentCollector {
         Matcher matcher = BIOME_PATTERN.matcher(biomeName);
         boolean isDesert = matcher.find();
         
+        // 🔧 添加详细调试信息
+        boolean isThundering = world.isThundering();
+        boolean hasStorm = world.hasStorm();
+        plugin.debug("天气检测详情 - 雷暴: " + isThundering + ", 下雨: " + hasStorm + ", 生物群系: " + biomeName);
+        
         // 🔧 修复：使用更准确的天气判断逻辑
-        if (world.isThundering()) {
+        if (isThundering) {
+            plugin.debug("检测到雷暴天气");
             return isDesert ? "沙暴雷电" : "雷暴雨";
-        } else if (world.hasStorm()) {
+        } else if (hasStorm) {
+            plugin.debug("检测到下雨天气");
             return isDesert ? "沙尘暴" : "下雨"; 
         } else {
-            // 🔧 修复：不使用isClearWeather()，直接判断为晴朗
+            plugin.debug("检测到晴朗天气");
             return "晴朗";
         }
     }
@@ -762,6 +821,20 @@ public class EnvironmentCollector {
      * 关闭收集器
      */
     public void shutdown() {
+        // 🔧 关闭缓存清理线程池
+        if (cacheCleanupExecutor != null && !cacheCleanupExecutor.isShutdown()) {
+            cacheCleanupExecutor.shutdown();
+            try {
+                if (!cacheCleanupExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
+                    cacheCleanupExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                cacheCleanupExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        
+        // 关闭主线程池
         executor.shutdown();
         try {
             if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -771,5 +844,31 @@ public class EnvironmentCollector {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        
+        // 清理缓存
+        cache.clear();
+        pendingScans.clear();
+        
+        plugin.debug("EnvironmentCollector已安全关闭");
+    }
+
+    // 🔧 新增：缓存清理任务
+    private void startCacheCleanup() {
+        cacheCleanupExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                long now = System.currentTimeMillis();
+                int sizeBefore = cache.size();
+                boolean removed = cache.entrySet().removeIf(entry -> 
+                    now - entry.getValue().timestamp > config.getEnvironmentCacheTTL()
+                );
+                if (removed) {
+                    int sizeAfter = cache.size();
+                    int expiredCount = sizeBefore - sizeAfter;
+                    plugin.debug("清理了 " + expiredCount + " 个过期的环境缓存项");
+                }
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "清理环境缓存时发生错误", e);
+            }
+        }, 60, 60, TimeUnit.SECONDS); // 每分钟清理一次
     }
 } 

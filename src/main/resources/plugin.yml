@@ -1,9 +1,10 @@
 name: AIChatPlugin
-version: '${project.version}'
+version: 1.2.0
+description: Minecraft AI聊天插件，支持DeepSeek AI智能对话和环境感知
 main: com.example.aichatplugin.AIChatPlugin
-api-version: '1.20'
-description: "一个基于DeepSeek API的Minecraft AI聊天插件 [Beta: 对话记忆和玩家档案永久存储]"
-author: YourName
+api-version: 1.19
+author: AI Chat Plugin Team
+website: https://github.com/zsbooody/ai-chat-plugin
 
 commands:
   ai:
@@ -40,6 +41,16 @@ commands:
   promote:
     description: 提升用户为VIP权限
     usage: /promote <玩家名>
+    permission: aichat.admin
+    permission-message: "§c你没有权限使用此命令！"
+  benchmark:
+    description: 性能基准测试和自动优化
+    usage: |
+      /benchmark - 显示帮助信息
+      /benchmark run [持续时间] - 运行性能基准测试 (10-300秒，默认60秒)
+      /benchmark apply - 应用测试产生的优化建议
+      /benchmark status - 查看测试状态和结果
+      /benchmark help - 显示详细帮助信息
     permission: aichat.admin
     permission-message: "§c你没有权限使用此命令！"
 
